@@ -1,0 +1,27 @@
+@prefix ex: <http://example.org/ns#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix schema: <http://schema.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:Bob
+    a schema:Person ;
+    schema:givenName "Robert" ;
+    schema:familyName "Junior" ;
+    schema:birthDate "1971-07-07"^^xsd:date ;  # try missing birthDate, or adding a different birthDate
+    schema:deathDate "2019-09-10"^^xsd:date ;  # try a deathDate early than birthDate
+    schema:gender "male" ;  # try a misspelled gender
+    schema:address ex:BobsAddress .
+
+ex:BobsAddress
+    schema:streetAddress "1600 Amphitheatre Pkway" ;
+    schema:postalCode "15213" .  # try a malformed zip code
+
+# Note: the following should trigger error like "object type invalid",
+# because the shape says hasAddress's object should be a PostalAddress
+# while Alice is a Person.
+ex:Alice a schema:Person .
+ex:Bob schema:hasAddress ex:Alice .
+# Note again: the above triggers "closed constraint component" error
+# if the AddressShape contains the "closed" attribute which prohibits Alice,
+# to be anything else other than a Person.
