@@ -1,3 +1,4 @@
 # pycharm
 .idea/
 creds.py
+__pycache__
