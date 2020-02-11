@@ -39,7 +39,8 @@ def queryGraph(details=False):
 
     if not details: return
     for r in triples:
-        print('<%s> <%s> <%s>' % (r['s']['value'], r['p']['value'], r['o']['value']))
+        print('(%s)<%s> (%s)<%s> (%s)<%s>' %
+              (r['s']['type'], r['s']['value'], r['p']['type'], r['p']['value'], r['o']['type'], r['o']['value']))
 
 def deleteAll():
     print('delete all triples')
@@ -71,35 +72,19 @@ def loadFileViaURL():
 
 queryGraph()
 loadFileViaURL()
-queryGraph(details=True)
 deleteAll()
 
-
-# try insert: must exec
-# grant execute on "DB.DBA.SPARQL_INSERT_DICT_CONTENT" to "SPARQL";
+print('insert a triple')
 sparql = getSparql(update=True)
 sparql.setQuery("""
 WITH <http://www.example.org/graph-selected>
 INSERT
 { <http://dbpedia.org/resource/Asturias> rdfs:label "Asturies"@ast }
 """)
-print('request', sparql.isSparqlUpdateRequest())
 results = sparql.query()
-print(results)
+queryGraph(details=True)
 
-# try query
-sparql = getSparql()
-sparql.setQuery('WITH <http://www.example.org/graph-selected> SELECT * WHERE { ?s ?p ?o. }')
-try :
-   ret = sparql.query().convert()
-   print(ret)
-   for r in ret['results']['bindings']:
-       print ('result', r)
-except :
-   deal_with_the_exception()
-
-# try update, must exec
-# grant execute on "DB.DBA.SPARQL_MODIFY_BY_DICT_CONTENTS" to "SPARQL";
+print('update a triple -- delete and insert')
 sparql = getSparql(update=True)
 sparql.setQuery("""
 WITH <http://www.example.org/graph-selected>
@@ -108,32 +93,17 @@ DELETE
 INSERT
 { <http://dbpedia.org/resource/Asturias> rdfs:label "ASTURIES"@ast }
 """)
-print('request', sparql.isSparqlUpdateRequest())
 results = sparql.query()
-print(results)
+queryGraph(details=True)
 
-# try delete, must exec
-# grant execute on "DB.DBA.SPARQL_DELETE_DICT_CONTENT" to "SPARQL";
+print('delete a triple')
 sparql = getSparql(update=True)
 sparql.setQuery("""
 WITH <http://www.example.org/graph-selected>
 DELETE
 { <http://dbpedia.org/resource/Asturias> rdfs:label "ASTURIES"@ast }
 """)
-print('request', sparql.isSparqlUpdateRequest())
 results = sparql.query()
-print(results)
-
-# try query again
-# get nothing
-sparql = getSparql()
-sparql.setQuery('SELECT * WHERE { ?s ?p ?o. }')
-try :
-   ret = sparql.query().convert()
-   print(ret)
-   for r in ret['results']['bindings']:
-       print ('result', r)
-except :
-   deal_with_the_exception()
+queryGraph()
 
 exit()
