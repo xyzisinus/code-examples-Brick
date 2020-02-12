@@ -1,6 +1,7 @@
 from copy import deepcopy
 import pdb
 from uuid import uuid4 as gen_uuid
+import requests
 
 import rdflib
 from rdflib import RDFS, RDF, OWL, Namespace, Graph, Literal, BNode, URIRef, compare
@@ -17,7 +18,9 @@ from creds import virtuosoCreds
 # See README.md for details.
 
 defaultGraph = 'http://www.example.org/graph-selected'
+brickFile =  'https://brickschema.org/schema/1.0.3/Brick.ttl'
 sampleGraphFile = 'sample_graph.ttl'
+#sampleGraphFile = 'short.ttl'
 
 def getSparql(update=False):
     sparql = SPARQLWrapper(endpoint='http://localhost:8890/sparql',
@@ -30,14 +33,26 @@ def getSparql(update=False):
         sparql.setMethod(POST)
     return sparql
 
-def queryGraph(details=False):
+
+def queryGraphCount():
+    nTriples = None
+
+    # cheap op: get count first
+    sparql = getSparql()
+    sparql.setQuery('WITH <http://www.example.org/graph-selected> SELECT (COUNT(*) AS ?count) WHERE { ?s ?p ?o . }')
+    ret = sparql.query().convert()
+    for r in ret['results']['bindings']:
+        nTriples = r['count']['value']
+        break
+    print(f'queryGraphCount # of triples in {defaultGraph}', nTriples)
+
+
+def queryGraph():
     sparql = getSparql()
     sparql.setQuery('WITH <http://www.example.org/graph-selected> SELECT * WHERE { ?s ?p ?o. }')
     ret = sparql.query().convert()
     triples = ret['results']['bindings']
-    print(f'# of triples in {defaultGraph}', len(triples))
-
-    if not details: return
+    print(f'queryGraph # of triples in {defaultGraph}', len(triples))
 
     g = Graph()
     for r in triples:
@@ -45,18 +60,26 @@ def queryGraph(details=False):
         print('(%s)<%s> (%s)<%s> (%s)<%s>' %
               (r['s']['type'], r['s']['value'], r['p']['type'], r['p']['value'], r['o']['type'], r['o']['value']))
         '''
+
         triple = ()
         for term in (r['s'], r['p'], r['o']):
             if term['type'] == 'uri':
                 triple = triple + (URIRef(term['value']),)
             elif term['type'] == 'literal':
-                triple = triple + (Literal(term['value']))
+                if term['xml:lang']:
+                    triple = triple + (Literal(term['value'], term['xml:lang']),)
+                else:
+                    triple = triple + (Literal(term['value']),)
+            elif term['type'] == 'bnode':
+                triple = triple + (BNode(term['value']),)
+                hasBnode = True
             else:
                 assert False, 'term type %s is not handled' % term['type']
+
         g.add(triple)
 
     return g
-# end of queryGraph()
+
 
 def deleteAll():
     print('delete all triples')
@@ -70,57 +93,66 @@ def deleteAll():
     except Exception as e:
         print('delete all exception %s' % e)
 
-    queryGraph()
+    queryGraphCount()
 
 def loadFileViaURL():
     print('load file via URL')
+
     try:
         sparql = getSparql(update=True)
-        sparql.setQuery("""
-        WITH <http://www.example.org/graph-selected>
-        LOAD <https://brickschema.org/schema/1.0.3/Brick.ttl> INTO <http://www.example.org/graph-selected>
-        """)
+        q = 'WITH <http://www.example.org/graph-selected> LOAD <%s> INTO <http://www.example.org/graph-selected>' % brickFile
+        sparql.setQuery(q)
         results = sparql.query()
     except Exception as e:
         print('load file via URL exception %s' % e)
 
-    queryGraph()
+    queryGraphCount()
 
+# CAUTION: With blank nodes in the graph parsed from a .ttl file, the database side
+# loading method loadViaURL should be used,
+# That is because the database makes no guarantee the Bnode names will be kept
+# consistent across multiple INSERT queries.
+# When the file is large, even if the caller of SPARQLWrapper inserts all triples
+# with one query SPARQLWrapper may still devide the inserts into batches and thus
+# break the bnode name consistency.
 def loadGraph(g):
-    for (s, p, o) in g:
-        sparql = getSparql(update=True)
-        q = 'WITH <http://www.example.org/graph-selected> INSERT {\n'
-        triple_str = ' '.join([term.n3() for term in (s, p, o)]) + ' .\n'
-        # triple_str = ' '.join(['<{0}>'.format(str(term)) for term in (s, p, o)]) + ' .\n'
-        q += triple_str
-        q += '}'
-        sparql.setQuery(q)
-        results = sparql.query()
+    print('load local graph')
 
-deleteAll()
-g = Graph()
-g.parse(sampleGraphFile, format='turtle')
-
-'''
-for (s, p, o) in g:
     sparql = getSparql(update=True)
     q = 'WITH <http://www.example.org/graph-selected> INSERT {\n'
-    triple_str = ' '.join([term.n3() for term in (s, p, o)]) + ' .\n'
-    # triple_str = ' '.join(['<{0}>'.format(str(term)) for term in (s, p, o)]) + ' .\n'
-    q += triple_str
+    for (s, p, o) in g:
+        q += ' '.join([term.n3() for term in (s, p, o)]) + ' .\n'
     q += '}'
     sparql.setQuery(q)
     results = sparql.query()
-'''
 
+    queryGraphCount()
+
+
+deleteAll()
+
+# parse a SMALL .ttl file, load as tripls, query and compare
+g = Graph()
+g.parse(sampleGraphFile, format='turtle')
 loadGraph(g)
-resultG = queryGraph(details=True)
-print(compare.isomorphic(g, resultG))
+resultG = queryGraph()
+print('compare db graph and local:', compare.isomorphic(g, resultG))
 
-exit()
+deleteAll()
 
-queryGraph()
+# load a file via URL, query.  parse the same file into graph and compare.
 loadFileViaURL()
+resultG = queryGraph()
+# write to file for analysis
+with open('BrickFromDB.ttl', 'wb') as f:
+    f.write(resultG.serialize(format='ttl'))
+# download the same file and parse into grapy
+r = requests.get(brickFile, allow_redirects=True)
+open('Brick.ttl', 'wb').write(r.content)
+g = Graph()
+g.parse('Brick.ttl', format='turtle')
+print('compare db graph and local:', compare.isomorphic(g, resultG))
+
 deleteAll()
 
 print('insert 2 triples')
@@ -132,7 +164,7 @@ INSERT
   <http://dbpedia.org/resource/Asturias> rdfs:label "XYZ"@ast }
 """)
 results = sparql.query()
-queryGraph(details=True)
+queryGraph()
 
 print('update a triple -- delete and insert')
 sparql = getSparql(update=True)
@@ -144,7 +176,7 @@ INSERT
 { <http://dbpedia.org/resource/Asturias> rdfs:label "ASTURIES"@ast }
 """)
 results = sparql.query()
-queryGraph(details=True)
+queryGraph()
 
 print('delete a triple')
 sparql = getSparql(update=True)
@@ -154,7 +186,7 @@ DELETE
 { <http://dbpedia.org/resource/Asturias> rdfs:label "ASTURIES"@ast }
 """)
 results = sparql.query()
-queryGraph(details=True)
+queryGraph()
 
 # Empty the default graph
 deleteAll()
