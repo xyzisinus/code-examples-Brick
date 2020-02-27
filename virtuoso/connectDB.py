@@ -47,7 +47,7 @@ def queryGraphCount():
     print(f'queryGraphCount # of triples in {defaultGraph}', nTriples)
 
 
-def queryGraph():
+def queryGraph(verbose=False):
     sparql = getSparql()
     sparql.setQuery('WITH <http://www.example.org/graph-selected> SELECT * WHERE { ?s ?p ?o. }')
     ret = sparql.query().convert()
@@ -56,10 +56,9 @@ def queryGraph():
 
     g = Graph()
     for r in triples:
-        '''
-        print('(%s)<%s> (%s)<%s> (%s)<%s>' %
-              (r['s']['type'], r['s']['value'], r['p']['type'], r['p']['value'], r['o']['type'], r['o']['value']))
-        '''
+        if verbose:
+            print('(%s)<%s> (%s)<%s> (%s)<%s>' %
+                  (r['s']['type'], r['s']['value'], r['p']['type'], r['p']['value'], r['o']['type'], r['o']['value']))
 
         triple = ()
         for term in (r['s'], r['p'], r['o']):
@@ -128,6 +127,14 @@ def loadGraph(g):
 
     queryGraphCount()
 
+def listGraphs():
+    sparql = getSparql()
+    sparql.setQuery('SELECT DISTINCT ?g WHERE { GRAPH ?g {?s a ?t} }')
+    results = sparql.query().convert()['results']['bindings']
+    print('# of graphs:', len(results))
+    for r in results:
+        print(r['g']['value'])
+
 
 deleteAll()
 
@@ -155,6 +162,8 @@ print('compare db graph and local:', compare.isomorphic(g, resultG))
 
 deleteAll()
 
+listGraphs()
+
 print('insert 2 triples')
 sparql = getSparql(update=True)
 sparql.setQuery("""
@@ -164,7 +173,10 @@ INSERT
   <http://dbpedia.org/resource/Asturias> rdfs:label "XYZ"@ast }
 """)
 results = sparql.query()
-queryGraph()
+resultG = queryGraph(verbose=True)
+print('graph:', resultG.serialize(format='ttl').decode('utf-8'))
+
+listGraphs()
 
 print('update a triple -- delete and insert')
 sparql = getSparql(update=True)
