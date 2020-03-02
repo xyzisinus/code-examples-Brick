@@ -17,15 +17,18 @@ from creds import virtuosoCreds
 # The ops here need permissions granted to "sparql" by virtuoso db.
 # See README.md for details.
 
-defaultGraph = 'http://www.example.org/graph-selected'
+defaultGraph = 'http://www.example.org/graph-default'
+defaultGraph = 'http://www.xyz.abc/graph-selected'
+withGraph = 'http://www.example.org/graph-with'
 brickFile =  'https://brickschema.org/schema/1.0.3/Brick.ttl'
 sampleGraphFile = 'sample_graph.ttl'
-#sampleGraphFile = 'short.ttl'
 
-def getSparql(update=False):
+def getSparql(graphName=None, update=False):
+    graph = graphName if graphName else defaultGraph
+    print('get sparql', graph)
     sparql = SPARQLWrapper(endpoint='http://localhost:8890/sparql',
                            updateEndpoint='http://localhost:8890/sparql-auth',
-                           defaultGraph='http://www.example.org/graph-selected')
+                           defaultGraph=graph)
     sparql.setCredentials('dba', virtuosoCreds['dba'])
     sparql.setHTTPAuth(DIGEST)
     sparql.setReturnFormat(JSON)
@@ -34,20 +37,24 @@ def getSparql(update=False):
     return sparql
 
 
-def queryGraphCount():
+def queryGraphCount(graphName=None):
     nTriples = None
 
-    # cheap op: get count first
-    sparql = getSparql()
-    sparql.setQuery('WITH <http://www.example.org/graph-selected> SELECT (COUNT(*) AS ?count) WHERE { ?s ?p ?o . }')
+    sparql = getSparql(graphName=graphName)
+
+    # cheap op: get count
+    q = f"""
+    SELECT (COUNT(*) AS ?count) WHERE {{ ?s ?p ?o . }}
+    """
+    sparql.setQuery(q)
     ret = sparql.query().convert()
     for r in ret['results']['bindings']:
         nTriples = r['count']['value']
         break
-    print(f'queryGraphCount # of triples in {defaultGraph}', nTriples)
+    return nTriples
 
 
-def queryGraph():
+def queryGraph(verbose=False):
     sparql = getSparql()
     sparql.setQuery('WITH <http://www.example.org/graph-selected> SELECT * WHERE { ?s ?p ?o. }')
     ret = sparql.query().convert()
@@ -56,10 +63,9 @@ def queryGraph():
 
     g = Graph()
     for r in triples:
-        '''
-        print('(%s)<%s> (%s)<%s> (%s)<%s>' %
-              (r['s']['type'], r['s']['value'], r['p']['type'], r['p']['value'], r['o']['type'], r['o']['value']))
-        '''
+        if verbose:
+            print('(%s)<%s> (%s)<%s> (%s)<%s>' %
+                  (r['s']['type'], r['s']['value'], r['p']['type'], r['p']['value'], r['o']['type'], r['o']['value']))
 
         triple = ()
         for term in (r['s'], r['p'], r['o']):
@@ -80,27 +86,39 @@ def queryGraph():
 
     return g
 
-
-def deleteAll():
-    print('delete all triples')
+def deleteAll(graphName):
+    print('delete all triples from', graphName)
     try:
-        sparql = getSparql(update=True)
-        sparql.setQuery("""
-        WITH <http://www.example.org/graph-selected>
-        DELETE { ?s ?p ?o } WHERE { ?s ?p ?o . }
-        """)
+        sparql = getSparql(graphName=graphName, update=True)
+        q = f"""
+        DROP SILENT GRAPH <{graphName}>
+        """
+        print('delete', q)
+        sparql.setQuery(q)
         results = sparql.query()
+        return
+
+        sparql = getSparql(graphName=graphName, update=True)
+        q = f"""
+        CREATE GRAPH <{graphName}>
+        """
+        print('create', q)
+        sparql.setQuery(q)
+        results = sparql.query()
+
+
     except Exception as e:
         print('delete all exception %s' % e)
 
     queryGraphCount()
 
-def loadFileViaURL():
+def loadFileViaURL(graphFile, graphName):
     print('load file via URL')
 
     try:
-        sparql = getSparql(update=True)
-        q = 'WITH <http://www.example.org/graph-selected> LOAD <%s> INTO <http://www.example.org/graph-selected>' % brickFile
+        sparql = getSparql(graphName=graphName, update=True)
+        q = f"""LOAD <{graphFile}> INTO <{graphFile}>"""
+        print(q)
         sparql.setQuery(q)
         results = sparql.query()
     except Exception as e:
@@ -128,8 +146,27 @@ def loadGraph(g):
 
     queryGraphCount()
 
+dbGraphs = []
+def listGraphs():
+    existingGraphs = []
+    sparql = getSparql()
+    sparql.setQuery('SELECT DISTINCT ?g WHERE { GRAPH ?g {?s a ?t} }')
+    results = sparql.query().convert()['results']['bindings']
+    print('# of graphs:', len(results))
+    for r in results:
+        graphName = r['g']['value']
+        print(graphName, queryGraphCount(graphName=graphName))
+        dbGraphs.append(graphName)
 
-deleteAll()
+
+listGraphs()
+deleteAll('https://brickschema.org/schema/1.0.3/Brick.ttl')
+listGraphs()
+exit()
+loadFileViaURL('https://brickschema.org/schema/1.0.3/Brick.ttl',
+               'https://brickschema.org/schema/1.0.3/Brick.ttl')
+listGraphs()
+exit()
 
 # parse a SMALL .ttl file, load as tripls, query and compare
 g = Graph()
@@ -155,6 +192,8 @@ print('compare db graph and local:', compare.isomorphic(g, resultG))
 
 deleteAll()
 
+listGraphs()
+
 print('insert 2 triples')
 sparql = getSparql(update=True)
 sparql.setQuery("""
@@ -164,7 +203,10 @@ INSERT
   <http://dbpedia.org/resource/Asturias> rdfs:label "XYZ"@ast }
 """)
 results = sparql.query()
-queryGraph()
+resultG = queryGraph(verbose=True)
+print('graph:', resultG.serialize(format='ttl').decode('utf-8'))
+
+listGraphs()
 
 print('update a triple -- delete and insert')
 sparql = getSparql(update=True)
