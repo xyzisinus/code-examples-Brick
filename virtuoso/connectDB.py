@@ -20,12 +20,12 @@ from creds import virtuosoCreds
 defaultGraph = 'http://www.example.org/graph-default'
 defaultGraph = 'http://www.xyz.abc/graph-selected'
 withGraph = 'http://www.example.org/graph-with'
-brickFile =  'https://brickschema.org/schema/1.0.3/Brick.ttl'
+brickFile =  'https://brickschema.org/schema/1.0.3/Brick.ttl'  # also serves as graph name
 sampleGraphFile = 'sample_graph.ttl'
 
 def getSparql(graphName=None, update=False):
     graph = graphName if graphName else defaultGraph
-    print('get sparql', graph)
+    #print('get sparql', graph)
     sparql = SPARQLWrapper(endpoint='http://localhost:8890/sparql',
                            updateEndpoint='http://localhost:8890/sparql-auth',
                            defaultGraph=graph)
@@ -86,23 +86,29 @@ def queryGraph(verbose=False):
 
     return g
 
-def deleteAll(graphName):
-    print('delete all triples from', graphName)
+def deleteGraph(graphName, force=False):
+    print('delete graph', graphName)
     try:
         sparql = getSparql(graphName=graphName, update=True)
-        q = f"""
-        DROP SILENT GRAPH <{graphName}>
-        """
-        print('delete', q)
+        if force:
+            q = f"DROP SILENT GRAPH <{graphName}>"
+        else:
+            q = f"DROP GRAPH <{graphName}>"
+        print(q)
         sparql.setQuery(q)
         results = sparql.query()
-        return
+    except Exception as e:
+        print('delete all exception %s' % e)
 
+
+def createGraph(graphName):
+    print('create graph', graphName)
+    try:
         sparql = getSparql(graphName=graphName, update=True)
         q = f"""
         CREATE GRAPH <{graphName}>
         """
-        print('create', q)
+        print(q)
         sparql.setQuery(q)
         results = sparql.query()
 
@@ -112,12 +118,13 @@ def deleteAll(graphName):
 
     queryGraphCount()
 
-def loadFileViaURL(graphFile, graphName):
-    print('load file via URL')
+def loadFileViaURL(graphFile, graphName=None):
+    print('load file via URL', graphFile, graphName)
 
+    graph = graphName if graphName else graphFile
     try:
-        sparql = getSparql(graphName=graphName, update=True)
-        q = f"""LOAD <{graphFile}> INTO <{graphFile}>"""
+        sparql = getSparql(graphName=graph, update=True)
+        q = f"""LOAD <{graphFile}> INTO <{graph}>"""
         print(q)
         sparql.setQuery(q)
         results = sparql.query()
@@ -133,11 +140,13 @@ def loadFileViaURL(graphFile, graphName):
 # When the file is large, even if the caller of SPARQLWrapper inserts all triples
 # with one query SPARQLWrapper may still devide the inserts into batches and thus
 # break the bnode name consistency.
-def loadGraph(g):
-    print('load local graph')
+def loadGraph(g, graphName=None):
 
-    sparql = getSparql(update=True)
-    q = 'WITH <http://www.example.org/graph-selected> INSERT {\n'
+    graph = graphName if graphName else graphFile
+    sparql = getSparql(graphName=graph, update=True)
+    #q = 'WITH <http://www.example.org/graph-selected> INSERT {\n'
+    q = f"""
+    INSERT {\n'
     for (s, p, o) in g:
         q += ' '.join([term.n3() for term in (s, p, o)]) + ' .\n'
     q += '}'
@@ -160,13 +169,19 @@ def listGraphs():
 
 
 listGraphs()
-deleteAll('https://brickschema.org/schema/1.0.3/Brick.ttl')
+deleteGraph(brickFile, force=True)
+deleteGraph(defaultGraph, force=True)
+
+createGraph(brickFile)
+createGraph(defaultGraph)
+loadFileViaURL(brickFile)
+loadFileViaURL(brickFile, graphName=defaultGraph)
+
 listGraphs()
-exit()
-loadFileViaURL('https://brickschema.org/schema/1.0.3/Brick.ttl',
-               'https://brickschema.org/schema/1.0.3/Brick.ttl')
-listGraphs()
-exit()
+
+deleteGraph(brickFile)
+deleteGraph(defaultGraph)
+
 
 # parse a SMALL .ttl file, load as tripls, query and compare
 g = Graph()
@@ -175,7 +190,7 @@ loadGraph(g)
 resultG = queryGraph()
 print('compare db graph and local:', compare.isomorphic(g, resultG))
 
-deleteAll()
+deleteGraph()
 
 # load a file via URL, query.  parse the same file into graph and compare.
 loadFileViaURL()
@@ -190,7 +205,7 @@ g = Graph()
 g.parse('Brick.ttl', format='turtle')
 print('compare db graph and local:', compare.isomorphic(g, resultG))
 
-deleteAll()
+deleteGraph()
 
 listGraphs()
 
@@ -231,6 +246,6 @@ results = sparql.query()
 queryGraph()
 
 # Empty the default graph
-deleteAll()
+deleteGraph()
 
 exit()
