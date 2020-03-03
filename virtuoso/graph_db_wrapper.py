@@ -1,21 +1,6 @@
-from copy import deepcopy
-import pdb
-from uuid import uuid4 as gen_uuid
-
-import rdflib
-from rdflib import RDFS, RDF, OWL, Namespace, Graph, BNode
-from rdflib.namespace import FOAF
+from rdflib import Namespace, Graph, BNode, URIRef, Literal
 from SPARQLWrapper import SPARQLWrapper
-from SPARQLWrapper import JSON, SELECT, INSERT, DIGEST, GET, POST
-from rdflib import URIRef, Literal
-import traceback
-
-import sys
-sys.path.append('..')
-from creds import virtuosoCreds
-
-#from .common import *
-#from ..helpers import chunks
+from SPARQLWrapper import JSON, DIGEST, POST
 
 import sys
 sys.path.append('..')
@@ -26,7 +11,7 @@ class BrickEndpoint():
     def __init__(self, sparqlServer, brickVersion, defaultGraph, loadSchema=False):
         self.brickVerion = brickVersion
         self.sparqlServer = sparqlServer
-        self.brickVersion = brickVersion
+        self.defaultGraph = defaultGraph
 
         self.BrickNS = Namespace(f"https://brickschema.org/schema/{brickVersion}/Brick#")
         self.BrickFrameNS = Namespace(f"https://brickschema.org/schema/{brickVersion}/BrickFrame#")
@@ -38,29 +23,12 @@ class BrickEndpoint():
         self.BrickTag = f"https://brickschema.org/schema/{brickVersion}/BrickTag.ttl"
         self.BrickUse = f"https://brickschema.org/schema/{brickVersion}/BrickUse.ttl"
 
-        self.BrickGraph = f"http://www.example.org/{brickVersion}/Brick"
-        self.BrickGraph = 'http://www.xyz.abc/brick-graph'
-        self.BrickFrameGraph = f"http://www.example.org/{brickVersion}/BrickFrame"
-        self.BrickTagGraph = f"http://www.example.org/{brickVersion}/BrickTag"
-        self.BrickUseGraph = f"https//www.example.org/{brickVersion}/BrickUse"
 
-        # All known dbGraphs
-        self.dbGraphs = []
-        self.defaultGraph = defaultGraph
-
-        '''
-        self.sparql = SPARQLWrapper(endpoint=sparqlServer,
-                                    updateEndpoint=sparqlServer + '-auth',
-                                    defaultGraph=graphName)
-        self.sparql.setCredentials('dba', virtuosoCreds['dba'])
-        self.sparql.setHTTPAuth(DIGEST)
-        self.sparql.setReturnFormat(JSON)
-        '''
-
-    def _getSparql(self, update=False):
-        sparql = SPARQLWrapper(endpoint='http://localhost:8890/sparql',
-                               updateEndpoint='http://localhost:8890/sparql-auth',
-                               defaultGraph=self.defaultGraph)
+    def _getSparql(self, graphName=None, update=False):
+        graph = graphName if graphName else self.defaultGraph
+        sparql = SPARQLWrapper(endpoint=self.sparqlServer,
+                               updateEndpoint=self.sparqlServer + '-auth',
+                               defaultGraph=graph)
         sparql.setCredentials('dba', virtuosoCreds['dba'])
         sparql.setHTTPAuth(DIGEST)
         sparql.setReturnFormat(JSON)
@@ -70,80 +38,87 @@ class BrickEndpoint():
 
 
     def listGraphs(self):
+        dbGraphs = []
         sparql = self._getSparql()
         sparql.setQuery('SELECT DISTINCT ?g WHERE { GRAPH ?g {?s a ?t} }')
         results = sparql.query().convert()['results']['bindings']
+        print('# of graphs:', len(results))
         for r in results:
-            if r['g']['value'] not in self.dbGraphs:
-                self.dbGraphs.append(r['g']['value'])
-        for g in self.dbGraphs:
-            print(g, self.__queryCount(g))
-        return self.dbGraphs
+            graphName = r['g']['value']
+            print(graphName, self.queryGraphCount(graphName=graphName))
+            dbGraphs.append(graphName)
+        return dbGraphs
 
 
-    def deleteAllInGraph(self, graphName):
-        print(f"{graphName} size:", self.__queryCount(graphName))
+    def deleteGraph(self, graphName, force=False):
+        if force:
+            q = f"DROP SILENT GRAPH <{graphName}>"
+        else:
+            q = f"DROP GRAPH <{graphName}>"
+        print(q)
 
-        print('delete all triples in:', graphName)
         try:
-            sparql = self._getSparql(update=True)
-            #q = f"WITH <{self.defaultGraph}> DELETE DATA <{graphName}> {{ ?s ?p ?o . }} WHERE {{ ?s ?p ?o . }}"
-            q = f"CLEAR GRAPH NAMED <{graphName}>"
+            sparql = self._getSparql(graphName=graphName, update=True)
+            sparql.setQuery(q)
+            results = sparql.query()
+        except Exception as e:
+            print('deleteGraph exception %s' % e)
+
+
+    def createGraph(self, graphName):
+        try:
+            sparql = self._getSparql(graphName=graphName, update=True)
+            q = f"CREATE GRAPH <{graphName}>"
             print(q)
             sparql.setQuery(q)
             results = sparql.query()
-            print(f"{graphName} size:", self.__queryCount(graphName))
         except Exception as e:
-            print('delete all exception %s' % e)
-            raise(e)
+            print('createGraph exception %s' % e)
 
 
     def loadSchema(self):
-        self.listGraphs()
-        self.loadFileViaURL(self.Brick, graphName=None)
-        # self.loadFileViaURL(self.BrickFrame)
-        # self.loadFileViaURL(self.BrickUse)
-        #self.loadFileViaURL(self.BrickTag)
-        self.listGraphs()
+        # delete all schema graphs before loading
+        self.deleteGraph(self.Brick, force=True)
+        self.loadFileViaURL(self.Brick)
+        self.deleteGraph(self.BrickFrame, force=True)
+        self.loadFileViaURL(self.BrickFrame)
+        self.deleteGraph(self.BrickUse, force=True)
+        self.loadFileViaURL(self.BrickUse)
+        self.deleteGraph(self.BrickTag, force=True)
+        self.loadFileViaURL(self.BrickTag)
+
 
     def __setUpdate(self):
         print('set update')
         self.sparql.setMethod(POST)
 
 
-    def loadFileViaURL(self, url, cleanFirst=False, dbGraphName=None):
+    def loadFileViaURL(self, graphFile, graphName=None):
+        graph = graphName if graphName else graphFile
         try:
-            graphName = dbGraphName if dbGraphName else url
-            print('load file:', url, graphName)
-            # graphName = 'http://www.xyz.abc/graph-selected'
-            # graphName = 'http://www.brickschema.or/schema'
-            if cleanFirst:
-               self.deleteAllInGraph(graphName)
-
-            sparql = self._getSparql(update=True)
-            print(f"WITH <{self.defaultGraph}> LOAD <{url}> INTO <{graphName}>")
-            sparql.setQuery(f"WITH <{self.defaultGraph}> LOAD <{url}> INTO <{graphName}>")
+            sparql = self._getSparql(graphName=graph, update=True)
+            q = f"LOAD <{graphFile}> INTO <{graph}>"
+            print(q)
+            sparql.setQuery(q)
             results = sparql.query()
-            self.__queryCount(graphName)
         except Exception as e:
-            print('load file via URL exception:', e)
-            raise(e)
+            print('load file via URL exception %s' % e)
 
 
-    def __queryCount(self, graphName):
+    def queryGraphCount(self, graphName=None):
         nTriples = None
 
-        sparql = self._getSparql(graphName)
-        sparql.setQuery(f"""
-        WITH <{graphName}> SELECT (COUNT(*) AS ?count) WHERE {{ ?s ?p ?o . }}
-        """)
+        sparql = self._getSparql(graphName=graphName)
+
+        # cheap op: get count
+        q = 'SELECT (COUNT(*) AS ?count) WHERE { ?s ?p ?o . }'
+        sparql.setQuery(q)
         ret = sparql.query().convert()
         for r in ret['results']['bindings']:
             nTriples = r['count']['value']
             break
-
-        # print(f"count: in {graphName}:", nTriples)
         return nTriples
+
 
     def queryGraph(self, graphName, verbose=False):
         sparql = self._getSparql(graphName)
@@ -189,7 +164,7 @@ class BrickEndpoint():
         sparql.setQuery(q)
         results = sparql.query()
 
-        queryGraphCount()
+        self.queryGraphCount()
 
     def execQuery(self, q, graphName):
         sparql = getSparql(graphName)
@@ -202,33 +177,19 @@ class BrickEndpoint():
 if __name__ == '__main__':
     endpoint = BrickEndpoint('http://localhost:8890/sparql',
                              '1.0.3',
-                             'http://www.xyz.abc/graph-selected',
+                             'http://www.xyz.abc/default-graph',
                              loadSchema=False)
-    endpoint.listGraphs()
-    endpoint.queryGraph(endpoint.BrickGraph)
-    endpoint.loadFileViaURL(endpoint.Brick, dbGraphName=endpoint.BrickGraph)
-    endpoint.deleteAllInGraph(endpoint.BrickGraph)
-    endpoint.listGraphs()
-    exit()
-    endpoint.deleteAllInGraph(endpoint.BrickGraph)
-    exit()
+    ep.listGraphs()
+    ep.loadFileViaURL(ep.Brick)
+    ep.deleteGraph(ep.Brick)
 
-    endpoint.queryGraph('http://brickschema.org/schema/1.0.3/Brick.ttl')
-    endpoint.loadFileViaURL('https://brickschema.org/schema/1.0.3/Brick.ttl')
-    # endpoint.deleteAllInGraph('http://www.xyz.abc/graph-selected')
-    endpoint.deleteAllInGraph('http://www.example.org/graph-selected')
-    endpoint.deleteAllInGraph('http://x.y.z/graph-selected')
-    endpoint.deleteAllInGraph('http://www.brick.frame/graph')
-    endpoint.deleteAllInGraph('http://brickschema.org/schema/1.0.3/Brick.ttl')
-    endpoint.listGraphs()
+    # load all schema files
+    ep.loadSchema()
+    ep.listGraphs()
+
+    ep.createGraph('http://abc.efg')
+    ep.loadFileViaURL(ep.Brick, graphName='http://abc.efg')
+    ep.listGraphs()
+    ep.deleteGraph('http://abc.efg')
+    ep.listGraphs()
     exit()
-    endpoint.queryGraph('https://brickschema.org/schema/1.0.3/Brick.ttl')
-    endpoint.deleteAllInGraph('http://brickschema.org/schema/1.0.3/Brick.ttl')
-    #endpoint.deleteAllInGraph('http://www.example.org/graph-selected')
-    exit()
-    # endpoint.loadSchema()
-    endpoint.deleteAllInGraph('http://brickschema.org/schema/1.0.3/BrickFrame.ttl')
-    endpoint.listGraphs()
-    endpoint.query
-    exit()
-    endpoint.loadSchema()
