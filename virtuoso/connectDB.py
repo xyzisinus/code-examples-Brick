@@ -50,13 +50,12 @@ def queryGraph(graphName=None, verbose=False):
     sparql.setQuery('SELECT * WHERE { ?s ?p ?o. }')
     ret = sparql.query().convert()
     triples = ret['results']['bindings']
-    print(f'queryGraph # of triples in {defaultGraph}', len(triples))
+    print(f'queryGraph # of triples:', len(triples))
 
     g = Graph()
     for r in triples:
         if verbose:
-            print('(%s)<%s> (%s)<%s> (%s)<%s>' %
-                  (r['s']['type'], r['s']['value'], r['p']['type'], r['p']['value'], r['o']['type'], r['o']['value']))
+            print(f"""({r['s']['type']})<{r['s']['value']}> ({r['p']['type']})<{r['p']['value']}> ({r['o']['type']})<{r['o']['value']}>""")
 
         triple = ()
         for term in (r['s'], r['p'], r['o']):
@@ -71,7 +70,7 @@ def queryGraph(graphName=None, verbose=False):
                 triple = triple + (BNode(term['value']),)
                 hasBnode = True
             else:
-                assert False, 'term type %s is not handled' % term['type']
+                assert False, f"term type {term['type']} is not handled"
 
         g.add(triple)
 
@@ -88,7 +87,7 @@ def deleteGraph(graphName, force=False):
         sparql.setQuery(q)
         results = sparql.query()
     except Exception as e:
-        print('deleteGraph exception %s' % e)
+        print(f"deleteGraph exception {e}")
 
 
 def createGraph(graphName):
@@ -99,7 +98,7 @@ def createGraph(graphName):
         sparql.setQuery(q)
         results = sparql.query()
     except Exception as e:
-        print('delete all exception %s' % e)
+        print(f"createGraph exception {e}")
 
 
 def loadFileViaURL(graphFile, graphName=None):
@@ -111,7 +110,7 @@ def loadFileViaURL(graphFile, graphName=None):
         sparql.setQuery(q)
         results = sparql.query()
     except Exception as e:
-        print('load file via URL exception %s' % e)
+        print(f"loadFileViaURL exception {e}")
 
 
 # CAUTION: With blank nodes in the graph parsed from a .ttl file, the database side
@@ -134,7 +133,7 @@ def loadGraph(g, graphName):
         sparql.setQuery(q)
         results = sparql.query()
     except Exception as e:
-        print('loadGraph exception %s' % e)
+        print(f"loadGraph exception {e}")
 
 
 def listGraphs():
