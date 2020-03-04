@@ -55,7 +55,9 @@ def queryGraph(graphName=None, verbose=False):
     g = Graph()
     for r in triples:
         if verbose:
-            print(f"""({r['s']['type']})<{r['s']['value']}> ({r['p']['type']})<{r['p']['value']}> ({r['o']['type']})<{r['o']['value']}>""")
+            print(f"({r['s']['type']})<{r['s']['value']}> " \
+                  f"({r['p']['type']})<{r['p']['value']}> " \
+                  f"({r['o']['type']})<{r['o']['value']}>")
 
         triple = ()
         for term in (r['s'], r['p'], r['o']):
