@@ -1,3 +1,5 @@
+import logging
+import traceback
 from rdflib import Namespace, Graph, BNode, URIRef, Literal
 from SPARQLWrapper import SPARQLWrapper
 from SPARQLWrapper import JSON, DIGEST, POST
@@ -6,9 +8,17 @@ import sys
 sys.path.append('..')
 from creds import virtuosoCreds
 
+logging.basicConfig(
+    format="%(asctime)s,%(msecs)03d %(levelname)-7s [%(filename)s:%(lineno)d] %(message)s",
+    datefmt="%Y-%m-%d:%H:%M:%S",
+    level=logging.DEBUG
+)
+
 class BrickEndpoint():
 
     def __init__(self, sparqlServer, brickVersion, defaultGraph, loadSchema=False):
+        self.log = logging.getLogger()
+
         self.brickVerion = brickVersion
         self.sparqlServer = sparqlServer
         self.defaultGraph = defaultGraph
@@ -29,159 +39,191 @@ class BrickEndpoint():
         sparql = SPARQLWrapper(endpoint=self.sparqlServer,
                                updateEndpoint=self.sparqlServer + '-auth',
                                defaultGraph=graph)
-        sparql.setCredentials('dba', virtuosoCreds['dba'])
-        sparql.setHTTPAuth(DIGEST)
-        sparql.setReturnFormat(JSON)
-        if update:
-            sparql.setMethod(POST)
-        return sparql
+        try:
+            sparql.setCredentials('dba', virtuosoCreds['dba'])
+            sparql.setHTTPAuth(DIGEST)
+            sparql.setReturnFormat(JSON)
+            if update:
+                sparql.setMethod(POST)
+            return sparql
+        except Exception as e:
+            self.log.error(f"exception: {e}")
+            raise e
 
 
     def listGraphs(self):
         dbGraphs = []
-        sparql = self._getSparql()
-        sparql.setQuery('SELECT DISTINCT ?g WHERE { GRAPH ?g {?s a ?t} }')
-        results = sparql.query().convert()['results']['bindings']
-        print('# of graphs:', len(results))
-        for r in results:
-            graphName = r['g']['value']
-            print(graphName, self.queryGraphCount(graphName=graphName))
-            dbGraphs.append(graphName)
-        return dbGraphs
+        try:
+            sparql = self._getSparql()
+            sparql.setQuery('SELECT DISTINCT ?g WHERE { GRAPH ?g {?s a ?t} }')
+            results = sparql.query().convert()['results']['bindings']
+
+            self.log.debug(f"# of graphs: {len(results)}")
+            for r in results:
+                graphName = r['g']['value']
+                self.log.debug(f"{graphName} {self.queryGraphCount(graphName=graphName)}")
+                dbGraphs.append(graphName)
+            return dbGraphs
+        except Exception as e:
+            self.log.error(f"exception: {e}")
+            raise e
 
 
-    def deleteGraph(self, graphName, force=False):
+    def dropGraph(self, graphName, force=False):
         if force:
             q = f"DROP SILENT GRAPH <{graphName}>"
         else:
             q = f"DROP GRAPH <{graphName}>"
-        print(q)
+        self.log.info(q)
 
         try:
             sparql = self._getSparql(graphName=graphName, update=True)
             sparql.setQuery(q)
             results = sparql.query()
         except Exception as e:
-            print('deleteGraph exception %s' % e)
+            self.log.error(f"exception: {e}")
+            raise e
 
 
     def createGraph(self, graphName):
         try:
             sparql = self._getSparql(graphName=graphName, update=True)
             q = f"CREATE GRAPH <{graphName}>"
-            print(q)
+            self.log.info(q)
             sparql.setQuery(q)
             results = sparql.query()
         except Exception as e:
-            print('createGraph exception %s' % e)
+            self.log.error(f"exception: {e}")
+            raise e
 
 
     def loadSchema(self):
-        # delete all schema graphs before loading
-        self.deleteGraph(self.Brick, force=True)
-        self.loadFileViaURL(self.Brick)
-        self.deleteGraph(self.BrickFrame, force=True)
-        self.loadFileViaURL(self.BrickFrame)
-        self.deleteGraph(self.BrickUse, force=True)
-        self.loadFileViaURL(self.BrickUse)
-        self.deleteGraph(self.BrickTag, force=True)
-        self.loadFileViaURL(self.BrickTag)
-
-
-    def __setUpdate(self):
-        print('set update')
-        self.sparql.setMethod(POST)
-
+        try:
+            # delete all schema graphs before loading
+            self.dropGraph(self.Brick, force=True)
+            self.loadFileViaURL(self.Brick)
+            self.dropGraph(self.BrickFrame, force=True)
+            self.loadFileViaURL(self.BrickFrame)
+            self.dropGraph(self.BrickUse, force=True)
+            self.loadFileViaURL(self.BrickUse)
+            self.dropGraph(self.BrickTag, force=True)
+            self.loadFileViaURL(self.BrickTag)
+        except Exception as e:
+            self.log.error(f"exception: {e}")
+            raise e
 
     def loadFileViaURL(self, graphFile, graphName=None):
         graph = graphName if graphName else graphFile
         try:
             sparql = self._getSparql(graphName=graph, update=True)
             q = f"LOAD <{graphFile}> INTO <{graph}>"
-            print(q)
+            self.log.info(q)
             sparql.setQuery(q)
             results = sparql.query()
         except Exception as e:
-            print('load file via URL exception %s' % e)
+            self.log.error(f"exception: {e}")
+            raise e
 
 
     def queryGraphCount(self, graphName=None):
         nTriples = None
 
-        sparql = self._getSparql(graphName=graphName)
+        try:
+            sparql = self._getSparql(graphName=graphName)
 
-        # cheap op: get count
-        q = 'SELECT (COUNT(*) AS ?count) WHERE { ?s ?p ?o . }'
-        sparql.setQuery(q)
-        ret = sparql.query().convert()
-        for r in ret['results']['bindings']:
-            nTriples = r['count']['value']
-            break
-        return nTriples
+            # cheap op: get count
+            q = 'SELECT (COUNT(*) AS ?count) WHERE { ?s ?p ?o . }'
+            sparql.setQuery(q)
+            ret = sparql.query().convert()
+            for r in ret['results']['bindings']:
+                nTriples = r['count']['value']
+                break
+            return nTriples
+        except Exception as e:
+            self.log.error(f"exception: {e}")
+            raise e
 
 
     def queryGraph(self, graphName, verbose=False):
-        sparql = self._getSparql(graphName)
-        sparql.setQuery(f"WITH <{graphName}> SELECT * WHERE {{ ?s ?p ?o. }}")
-        ret = sparql.query().convert()
-        triples = ret['results']['bindings']
-        print(f"queryGraph # of triples in {graphName}:", len(triples))
+        try:
+            sparql = self._getSparql(graphName=graphName)
+            sparql.setQuery('SELECT * WHERE { ?s ?p ?o. }')
+            ret = sparql.query().convert()
+            triples = ret['results']['bindings']
+            self.log.debug(f'queryGraph # of triples:', len(triples))
 
-        g = Graph()
-        for r in triples:
-            if verbose:
-                print('(%s)<%s> (%s)<%s> (%s)<%s>' %
-                      (r['s']['type'], r['s']['value'], r['p']['type'], r['p']['value'], r['o']['type'], r['o']['value']))
+            g = Graph()
+            for r in triples:
+                if verbose:
+                    self.log.debug(f"({r['s']['type']})<{r['s']['value']}> " \
+                                   f"({r['p']['type']})<{r['p']['value']}> " \
+                                   f"({r['o']['type']})<{r['o']['value']}>")
 
-            triple = ()
-            for term in (r['s'], r['p'], r['o']):
-                if term['type'] == 'uri':
-                    triple = triple + (URIRef(term['value']),)
-                elif term['type'] == 'literal':
-                    if term['xml:lang']:
-                        triple = triple + (Literal(term['value'], term['xml:lang']),)
+                triple = ()
+                for term in (r['s'], r['p'], r['o']):
+                    if term['type'] == 'uri':
+                        triple = triple + (URIRef(term['value']),)
+                    elif term['type'] == 'literal':
+                        if term['xml:lang']:
+                            triple = triple + (Literal(term['value'], term['xml:lang']),)
+                        else:
+                            triple = triple + (Literal(term['value']),)
+                    elif term['type'] == 'bnode':
+                        triple = triple + (BNode(term['value']),)
                     else:
-                        triple = triple + (Literal(term['value']),)
-                elif term['type'] == 'bnode':
-                    triple = triple + (BNode(term['value']),)
-                    hasBnode = True
-                else:
-                    assert False, 'term type %s is not handled' % term['type']
+                        assert False, f"term type {term['type']} is not handled"
+                # end of for term
+                g.add(triple)
 
-            g.add(triple)
-
-        return g
+            return g
+        except Exception as e:
+            self.log.error(f"exception: {e}")
+            raise e
     # end of queruGraph()
 
+
     def loadGraph(self, g, graphName):
-        print('load local graph')
+        try:
+            sparql = self._getSparql(graphName, update=True)
+            q = f"WITH <{graphName}> INSERT {{\n"
+            for (s, p, o) in g:
+                q += ' '.join([term.n3() for term in (s, p, o)]) + ' .\n'
+            q += '}'
+            sparql.setQuery(q)
+            results = sparql.query()
+        except Exception as e:
+            self.log.error(f"exception: {e}")
+            raise e
 
-        sparql = getSparql(graphName, update=True)
-        q = f"WITH <{graphName}> INSERT {{\n"
-        for (s, p, o) in g:
-            q += ' '.join([term.n3() for term in (s, p, o)]) + ' .\n'
-        q += '}'
-        sparql.setQuery(q)
-        results = sparql.query()
+    def execQuery(self, queryStr, graphName=None):
+        try:
+            sparql = self._getSparql(graphName=graphName)
+            sparql.setQuery(queryStr)
+            return sparql.query().convert()
+        except Exception as e:
+            self.log.error(f"exception: {e}")
+            raise e
 
-        self.queryGraphCount()
-
-    def execQuery(self, q, graphName):
-        sparql = getSparql(graphName)
-        sparql.setQuery(q)
-        results = sparql.query().convert()
-        return results
+    def execUpdate(queryStr, graphName=None):
+        try:
+            sparql = self._getSparql(graphName=graphName, update=True)
+            sparql.setQuery(queryStr)
+            return sparql.query().convert()
+        except Exception as e:
+            self.log.error(f"exception: {e}")
+            raise e
 
 # end of BrickEndpoint()
 
 if __name__ == '__main__':
-    endpoint = BrickEndpoint('http://localhost:8890/sparql',
-                             '1.0.3',
-                             'http://www.xyz.abc/default-graph',
-                             loadSchema=False)
+    defaultGraph = 'http://www.xyz.abc/graph'
+    ep = BrickEndpoint('http://localhost:8890/sparql',
+                       '1.0.3',
+                       defaultGraph,
+                       loadSchema=False)
     ep.listGraphs()
     ep.loadFileViaURL(ep.Brick)
-    ep.deleteGraph(ep.Brick)
+    ep.dropGraph(ep.Brick, force=True)
 
     # load all schema files
     ep.loadSchema()
@@ -190,6 +232,12 @@ if __name__ == '__main__':
     ep.createGraph('http://abc.efg')
     ep.loadFileViaURL(ep.Brick, graphName='http://abc.efg')
     ep.listGraphs()
-    ep.deleteGraph('http://abc.efg')
+    ep.dropGraph('http://abc.efg')
     ep.listGraphs()
-    exit()
+
+    g = Graph()
+    g.parse('sample_graph.ttl', format='turtle')
+    ep.loadGraph(g, defaultGraph)
+    resultG = ep.queryGraph(defaultGraph, verbose=True)
+    ep.dropGraph(defaultGraph, force=True)
+    ep.listGraphs()
