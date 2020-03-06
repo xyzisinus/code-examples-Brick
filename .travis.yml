@@ -10,10 +10,11 @@ before_install:
   - docker pull openlink/virtuoso-opensource-7:7.2
   - mkdir virtdb
   - cd virtdb
-  - docker run --name virtdb --publish 1111:1111 --publish  8890:8890 --volume `pwd`:/database openlink/virtuoso-opensource-7:7.2
+  - docker run --name virtdb --publish 1111:1111 --publish  8890:8890 --volume `pwd`:/database openlink/virtuoso-opensource-7:7.2 &
 
 install:
   - pip install -r requirements.txt
 
 script:
+  - sleep 60
   - pytest -s -vvvv
