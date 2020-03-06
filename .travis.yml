@@ -8,7 +8,7 @@ services:
 
 before_install:
   - docker pull openlink/virtuoso-opensource-7:7.2
-  - make virtdb
+  - mkdir virtdb
   - docker run \
     --name virtdb \
     --interactive \
