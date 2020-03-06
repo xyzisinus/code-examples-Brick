@@ -4,9 +4,9 @@ from rdflib import Namespace, Graph, BNode, URIRef, Literal
 from SPARQLWrapper import SPARQLWrapper
 from SPARQLWrapper import JSON, DIGEST, POST
 
-import sys
-sys.path.append('..')
-from creds import virtuosoCreds
+#import sys
+#sys.path.append('..')
+#from creds import virtuosoCreds
 
 logging.basicConfig(
     format="%(asctime)s,%(msecs)03d %(levelname)-7s [%(filename)s:%(lineno)d] %(message)s",
@@ -40,7 +40,8 @@ class BrickEndpoint():
                                updateEndpoint=self.sparqlServer + '-auth',
                                defaultGraph=graph)
         try:
-            sparql.setCredentials('dba', virtuosoCreds['dba'])
+            # sparql.setCredentials('dba', virtuosoCreds['dba'])
+            sparql.setCredentials('dba', 'dba')
             sparql.setHTTPAuth(DIGEST)
             sparql.setReturnFormat(JSON)
             if update:
