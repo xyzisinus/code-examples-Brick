@@ -9,15 +9,8 @@ services:
 before_install:
   - docker pull openlink/virtuoso-opensource-7:7.2
   - mkdir virtdb
-  - docker run \
-    --name virtdb \
-    --interactive \
-    --tty \
-    --env DBA_PASSWORD=mysecret \
-    --publish 1111:1111 \
-    --publish  8890:8890 \
-    --volume `pwd`:/database \
-    openlink/virtuoso-opensource-7:latest
+  - cd virtdb
+  - docker run --name virtdb --publish 1111:1111 --publish  8890:8890 --volume `pwd`:/database openlink/virtuoso-opensource-7:7.2
 
 install:
   - pip install -r requirements.txt
