@@ -41,7 +41,7 @@ class BrickEndpoint():
                                defaultGraph=graph)
         try:
             # sparql.setCredentials('dba', virtuosoCreds['dba'])
-            sparql.setCredentials('dba', 'dba')
+            sparql.setCredentials('dba', 'mysecret')
             sparql.setHTTPAuth(DIGEST)
             sparql.setReturnFormat(JSON)
             if update:
