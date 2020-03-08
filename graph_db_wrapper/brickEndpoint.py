@@ -146,7 +146,7 @@ class BrickEndpoint():
             sparql.setQuery('SELECT * WHERE { ?s ?p ?o. }')
             ret = sparql.query().convert()
             triples = ret['results']['bindings']
-            self.log.debug(f'queryGraph # of triples:', len(triples))
+            self.log.debug(f"queryGraph # of triples: {len(triples)}")
 
             g = Graph()
             for r in triples:
