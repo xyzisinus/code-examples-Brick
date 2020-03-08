@@ -18,4 +18,5 @@ install:
 
 script:
   - while [[ ! $(curl localhost:8890) ]]; do sleep 5; done
+  - export DBA_PASSWORD=mysecret
   - pytest -s -vvvv

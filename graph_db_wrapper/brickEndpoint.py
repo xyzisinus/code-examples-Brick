@@ -1,18 +1,14 @@
+import os
 import logging
 import traceback
 from rdflib import Namespace, Graph, BNode, URIRef, Literal
 from SPARQLWrapper import SPARQLWrapper
 from SPARQLWrapper import JSON, DIGEST, POST
 
-#import sys
-#sys.path.append('..')
-#from creds import virtuosoCreds
-
 logging.basicConfig(
     format="%(asctime)s,%(msecs)03d %(levelname)-7s [%(filename)s:%(lineno)d] %(message)s",
     datefmt="%Y-%m-%d:%H:%M:%S",
-    level=logging.DEBUG
-)
+    level=logging.WARNING)
 
 class BrickEndpoint():
 
@@ -40,8 +36,7 @@ class BrickEndpoint():
                                updateEndpoint=self.sparqlServer + '-auth',
                                defaultGraph=graph)
         try:
-            # sparql.setCredentials('dba', virtuosoCreds['dba'])
-            sparql.setCredentials('dba', 'mysecret')
+            sparql.setCredentials('dba', os.environ['DBA_PASSWORD'])
             sparql.setHTTPAuth(DIGEST)
             sparql.setReturnFormat(JSON)
             if update:

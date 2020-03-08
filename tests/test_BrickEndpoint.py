@@ -1,9 +1,12 @@
+import logging
 from graph_db_wrapper.brickEndpoint import BrickEndpoint
 
 defaultGraph = 'http://www.xyz.abc/graph'
 
 def test_xxx():
-    print("in test")
+    log = logging.getLogger()
+    log.setLevel(logging.DEBUG)
+
     ep = BrickEndpoint('http://localhost:8890/sparql',
                        '1.0.3',
                        defaultGraph,
