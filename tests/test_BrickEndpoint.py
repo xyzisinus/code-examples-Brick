@@ -1,4 +1,6 @@
+import os
 import logging
+import requests
 from rdflib import Graph, compare
 from graph_db_wrapper.brickEndpoint import BrickEndpoint
 
@@ -26,8 +28,8 @@ def test_basic():
     ep.listGraphs()
 
 
-def test_loadAndCompare():
-    defaultGraph = 'http://www.xyz.abc/test_loadAndCompare'
+def test_loadGraph():
+    defaultGraph = 'http://www.xyz.abc/test_loadGraph'
     ep = BrickEndpoint('http://localhost:8890/sparql',
                        '1.0.3',
                        defaultGraph)
@@ -39,4 +41,23 @@ def test_loadAndCompare():
     assert compare.isomorphic(g, resultG), 'loaded graph and query result not match'
 
     ep.dropGraph(defaultGraph, force=True)
-    ep.listGraphs()
+
+
+def test_loadFileViaURL():
+    defaultGraph = 'http://www.xyz.abc/test_loadFileViaURL'
+    ep = BrickEndpoint('http://localhost:8890/sparql',
+                       '1.0.3',
+                       defaultGraph)
+
+    ep.loadFileViaURL(ep.Brick, graphName=defaultGraph)
+    resultG = ep.queryGraph(defaultGraph)
+
+    # download the file and read in to compare
+    r = requests.get(ep.Brick, allow_redirects=True)
+    open('Brick.ttl', 'wb').write(r.content)
+    g = Graph()
+    g.parse('Brick.ttl', format='turtle')
+    assert compare.isomorphic(g, resultG), 'loaded graph and query result not match'
+
+    ep.dropGraph(defaultGraph, force=True)
+    os.remove('Brick.ttl')

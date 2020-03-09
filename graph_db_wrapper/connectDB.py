@@ -1,11 +1,8 @@
+import os
 import requests
 from rdflib import Graph, Literal, BNode, URIRef, compare
 from SPARQLWrapper import SPARQLWrapper
 from SPARQLWrapper import JSON, DIGEST, POST
-
-import sys
-sys.path.append('..')
-from creds import virtuosoCreds
 
 # Demonstrate grap db operations via SPARQLWrapper.
 # The ops here need permissions granted to "sparql" by virtuoso db 6.1.
@@ -22,7 +19,7 @@ def getSparql(graphName=None, update=False):
     sparql = SPARQLWrapper(endpoint='http://localhost:8890/sparql',
                            updateEndpoint='http://localhost:8890/sparql-auth',
                            defaultGraph=graph)
-    sparql.setCredentials('dba', virtuosoCreds['dba'])
+    sparql.setCredentials('dba', os.environ['DBA_PASSWORD'])
     sparql.setHTTPAuth(DIGEST)
     sparql.setReturnFormat(JSON)
     if update:
