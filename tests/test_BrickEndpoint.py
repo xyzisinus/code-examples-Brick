@@ -110,3 +110,50 @@ def test_execUpdate():
     assert int(count) == 1, "unexpected # of triples"
 
     ep.dropGraph(defaultGraph, force=True)
+
+
+def test_namespace():
+    defaultGraph = 'http://www.xyz.abc/test_namespace'
+    ep = BrickEndpoint('http://localhost:8890/sparql',
+                       '1.0.3',
+                       defaultGraph)
+    ep.dropGraph(defaultGraph, force=True)
+
+    ep.addNamespace('xyz', 'http://x.y.z/')
+
+    # insert two triples using prefix
+    q = """
+    INSERT
+    { xyz:subject rdfs:type rdfs:Literal .
+    xyz:subject rdfs:label "XYZ"@en . }
+    """
+    ep.execUpdate(q)
+    count = ep.queryGraphCount(defaultGraph)
+    assert int(count) == 2, "unexpected # of triples"
+
+    # update a triple using mix of prefix and full path
+    q = """
+    DELETE
+    { xyz:subject rdfs:label "XYZ"@en }
+    INSERT
+    { <http://x.y.z/subject> rdfs:label "abc"@en }
+    """
+    ep.execUpdate(q)
+
+    # query and compare
+    q = """
+    SELECT * WHERE { ?s rdfs:label ?o }
+    """
+    result = ep.execQuery(q)
+    objValue = result['results']['bindings'][0]['o']['value']
+    assert objValue == 'abc', "unexpect object value"
+
+    # delete a triple and check count
+    q = """
+    DELETE { xyz:subject rdfs:label "abc"@en }
+    """
+    ep.execUpdate(q)
+    count = ep.queryGraphCount(defaultGraph)
+    assert int(count) == 1, "unexpected # of triples"
+
+    ep.dropGraph(defaultGraph, force=True)

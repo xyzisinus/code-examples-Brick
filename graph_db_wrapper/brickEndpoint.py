@@ -1,7 +1,8 @@
 import os
 import logging
 import traceback
-from rdflib import Namespace, Graph, BNode, URIRef, Literal
+from rdflib import Graph, BNode, URIRef, Literal
+from rdflib.namespace import Namespace, NamespaceManager, OWL, RDF, RDFS, SKOS, FOAF
 from SPARQLWrapper import SPARQLWrapper
 from SPARQLWrapper import JSON, DIGEST, POST
 
@@ -23,6 +24,19 @@ class BrickEndpoint():
         self.BrickFrameNS = Namespace(f"https://brickschema.org/schema/{brickVersion}/BrickFrame#")
         self.BrickTagNS = Namespace(f"https://brickschema.org/schema/{brickVersion}/BrickTag#")
         self.BrickUseNS = Namespace(f"https://brickschema.org/schema/{brickVersion}/BrickUse#")
+
+        # TODO: Out of the namespaces above, only brickNS is associated with prefix
+        # 'brick', for lack of consistent prefixes for the other three.
+        self.nsMgr = NamespaceManager(Graph())
+        self.nsMgr.bind('brick', self.BrickNS)
+        self.nsMgr.bind('rdf', RDF)
+        self.nsMgr.bind('rdfs', RDFS)
+        self.nsMgr.bind('owl', OWL)
+        self.nsMgr.bind('skos', SKOS)
+        self.nsMgr.bind('foaf', FOAF)
+        self.nsMgr.bind('foaf', FOAF)
+        self.queryPrefixes = \
+        '\n'.join([f"PREFIX {prefix}: <{str(path)}>" for (prefix, path) in self.nsMgr.namespaces()])
 
         self.Brick = f"https://brickschema.org/schema/{brickVersion}/Brick.ttl"
         self.BrickFrame = f"https://brickschema.org/schema/{brickVersion}/BrickFrame.ttl"
@@ -192,21 +206,45 @@ class BrickEndpoint():
             raise e
 
     def execQuery(self, queryStr, graphName=None):
+        """
+        add known prefixes to the queryStr and perform query
+        """
+
+        q = self.queryPrefixes + '\n' + queryStr
+        self.log.debug(f"execQuery query:\n{q}")
+
         try:
             sparql = self._getSparql(graphName=graphName)
-            sparql.setQuery(queryStr)
+            sparql.setQuery(q)
             return sparql.query().convert()
         except Exception as e:
             self.log.error(f"exception: {e}")
             raise e
 
     def execUpdate(self, queryStr, graphName=None):
+        """
+        add known prefixes to the queryStr and perform update
+        """
+
+        q = self.queryPrefixes + '\n' + queryStr
+        self.log.debug(f"execUpdate query:\n{q}")
+
         try:
             sparql = self._getSparql(graphName=graphName, update=True)
-            sparql.setQuery(queryStr)
+            sparql.setQuery(q)
             return sparql.query().convert()
         except Exception as e:
             self.log.error(f"exception: {e}")
             raise e
+
+    def addNamespace(self, prefix, path):
+        """
+        Allow user to add their own namespaces for query convenience
+        """
+
+        self.nsMgr.bind(prefix, path)
+        self.queryPrefixes = \
+        '\n'.join([f"PREFIX {prefix}: <{str(path)}>" for (prefix, path) in self.nsMgr.namespaces()])
+        self.log.debug(f"query prefixes:\n{self.queryPrefixes}")
 
 # end of BrickEndpoint()
