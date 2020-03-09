@@ -12,6 +12,8 @@ def test_basic():
     ep = BrickEndpoint('http://localhost:8890/sparql',
                        '1.0.3',
                        defaultGraph)
+    ep.dropGraph(defaultGraph, force=True)
+
     ep.listGraphs()
     ep.loadFileViaURL(ep.Brick)
     ep.dropGraph(ep.Brick, force=True)
@@ -33,6 +35,7 @@ def test_loadGraph():
     ep = BrickEndpoint('http://localhost:8890/sparql',
                        '1.0.3',
                        defaultGraph)
+    ep.dropGraph(defaultGraph, force=True)
 
     g = Graph()
     g.parse('tests/data/sample_graph.ttl', format='turtle')
@@ -48,6 +51,7 @@ def test_loadFileViaURL():
     ep = BrickEndpoint('http://localhost:8890/sparql',
                        '1.0.3',
                        defaultGraph)
+    ep.dropGraph(defaultGraph, force=True)
 
     ep.loadFileViaURL(ep.Brick, graphName=defaultGraph)
     resultG = ep.queryGraph(defaultGraph)
@@ -61,3 +65,48 @@ def test_loadFileViaURL():
 
     ep.dropGraph(defaultGraph, force=True)
     os.remove('Brick.ttl')
+
+
+def test_execUpdate():
+    defaultGraph = 'http://www.xyz.abc/test_execUpdate'
+    ep = BrickEndpoint('http://localhost:8890/sparql',
+                       '1.0.3',
+                       defaultGraph)
+    ep.dropGraph(defaultGraph, force=True)
+
+    # insert two triples
+    q = """
+    INSERT
+    { <http://x.y.z/subject> rdfs:type rdfs:Literal .
+    <http://x.y.z/subject> rdfs:label "XYZ"@en . }
+    """
+    ep.execUpdate(q)
+    count = ep.queryGraphCount(defaultGraph)
+    assert int(count) == 2, "unexpected # of triples"
+
+    # update a triple
+    q = """
+    DELETE
+    { <http://x.y.z/subject> rdfs:label "XYZ"@en }
+    INSERT
+    { <http://x.y.z/subject> rdfs:label "abc"@en }
+    """
+    ep.execUpdate(q)
+
+    # query and compare
+    q = """
+    SELECT * WHERE { ?s rdfs:label ?o }
+    """
+    result = ep.execQuery(q)
+    objValue = result['results']['bindings'][0]['o']['value']
+    assert objValue == 'abc', "unexpect object value"
+
+    # delete a triple and check count
+    q = """
+    DELETE { <http://x.y.z/subject> rdfs:label "abc"@en }
+    """
+    ep.execUpdate(q)
+    count = ep.queryGraphCount(defaultGraph)
+    assert int(count) == 1, "unexpected # of triples"
+
+    ep.dropGraph(defaultGraph, force=True)

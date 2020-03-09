@@ -57,7 +57,7 @@ class BrickEndpoint():
             self.log.debug(f"# of graphs: {len(results)}")
             for r in results:
                 graphName = r['g']['value']
-                self.log.debug(f"{graphName} {self.queryGraphCount(graphName=graphName)}")
+                self.log.debug(f"{graphName} {self.queryGraphCount(graphName)}")
                 dbGraphs.append(graphName)
             return dbGraphs
         except Exception as e:
@@ -121,7 +121,7 @@ class BrickEndpoint():
             raise e
 
 
-    def queryGraphCount(self, graphName=None):
+    def queryGraphCount(self, graphName):
         nTriples = None
 
         try:
@@ -200,7 +200,7 @@ class BrickEndpoint():
             self.log.error(f"exception: {e}")
             raise e
 
-    def execUpdate(queryStr, graphName=None):
+    def execUpdate(self, queryStr, graphName=None):
         try:
             sparql = self._getSparql(graphName=graphName, update=True)
             sparql.setQuery(queryStr)
